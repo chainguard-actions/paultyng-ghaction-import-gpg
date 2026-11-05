@@ -1,0 +1,68 @@
+name: Test failure when committer email does not match key
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure gpg is installed
+        run: |
+          if ! command -v gpg >/dev/null 2>&1; then
+            SUDO=""; command -v sudo >/dev/null 2>&1 && SUDO="sudo"
+            $SUDO apt-get update && $SUDO apt-get install -y gnupg
+          fi
+          gpg --version
+      - name: Generate a throwaway GPG key (unprotected)
+        run: |
+          set -e
+          export GNUPGHOME="$(mktemp -d)"
+          chmod 700 "$GNUPGHOME"
+          cat > "$GNUPGHOME/params" <<EOF
+          %no-protection
+          Key-Type: RSA
+          Key-Length: 2048
+          Key-Usage: sign
+          Subkey-Type: RSA
+          Subkey-Length: 2048
+          Subkey-Usage: encrypt
+          Name-Real: Test User
+          Name-Email: test@example.com
+          Expire-Date: 0
+          %commit
+          EOF
+          gpg --batch --gen-key "$GNUPGHOME/params"
+          FPR=$(gpg --with-colons --list-secret-keys | awk -F: '/^fpr:/ {print $10; exit}')
+          echo "EXPECTED_FPR=$FPR" >> "$GITHUB_ENV"
+          {
+            echo "GPG_PRIVATE_KEY<<EOF_GPG_KEY"
+            gpg --batch --armor --export-secret-keys "$FPR"
+            echo "EOF_GPG_KEY"
+          } >> "$GITHUB_ENV"
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          git_user_signingkey: 'true'
+          git_commit_gpgsign: 'true'
+          git_committer_email: 'someone-else@example.org'
+      - name: Assert action failed on email mismatch
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          FPR: ${{ steps.action.outputs.fingerprint }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "fingerprint: $FPR"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "FAIL: expected failure due to committer email mismatch"
+            exit 1
+          fi
+          CS=$(git config --local --get commit.gpgsign || true)
+          echo "commit.gpgsign: '$CS'"
+          if [ "$CS" = "true" ]; then
+            echo "FAIL: commit.gpgsign should not be enabled after mismatch"
+            exit 1
+          fi
+          echo "PASS"

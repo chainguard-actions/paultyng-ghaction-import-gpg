@@ -1,0 +1,81 @@
+name: Test git signing configuration
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure gpg is installed
+        run: |
+          if ! command -v gpg >/dev/null 2>&1; then
+            SUDO=""; command -v sudo >/dev/null 2>&1 && SUDO="sudo"
+            $SUDO apt-get update && $SUDO apt-get install -y gnupg
+          fi
+          gpg --version
+      - name: Generate a throwaway GPG key (unprotected)
+        run: |
+          set -e
+          export GNUPGHOME="$(mktemp -d)"
+          chmod 700 "$GNUPGHOME"
+          cat > "$GNUPGHOME/params" <<EOF
+          %no-protection
+          Key-Type: RSA
+          Key-Length: 2048
+          Key-Usage: sign
+          Subkey-Type: RSA
+          Subkey-Length: 2048
+          Subkey-Usage: encrypt
+          Name-Real: Test User
+          Name-Email: test@example.com
+          Expire-Date: 0
+          %commit
+          EOF
+          gpg --batch --gen-key "$GNUPGHOME/params"
+          FPR=$(gpg --with-colons --list-secret-keys | awk -F: '/^fpr:/ {print $10; exit}')
+          SUBKEYID=$(gpg --with-colons --list-secret-keys | awk -F: '/^ssb:/ {print $5; exit}')
+          echo "EXPECTED_FPR=$FPR" >> "$GITHUB_ENV"
+          echo "EXPECTED_KEYID=$SUBKEYID" >> "$GITHUB_ENV"
+          {
+            echo "GPG_PRIVATE_KEY<<EOF_GPG_KEY"
+            gpg --batch --armor --export-secret-keys "$FPR"
+            echo "EOF_GPG_KEY"
+          } >> "$GITHUB_ENV"
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
+      - id: action
+        uses: .
+        with:
+          git_user_signingkey: 'true'
+          git_commit_gpgsign: 'true'
+          git_tag_gpgsign: 'true'
+          git_push_gpgsign: 'true'
+          git_committer_name: 'CI Bot'
+          git_committer_email: 'test@example.com'
+      - name: Assert git config
+        run: |
+          set -e
+          SK=$(git config --local --get user.signingkey || true)
+          UN=$(git config --local --get user.name || true)
+          UE=$(git config --local --get user.email || true)
+          CS=$(git config --local --get commit.gpgsign || true)
+          TS=$(git config --local --get tag.gpgsign || true)
+          PS=$(git config --local --get push.gpgsign || true)
+          echo "user.signingkey=$SK user.name=$UN user.email=$UE commit.gpgsign=$CS tag.gpgsign=$TS push.gpgsign=$PS"
+          [ "$SK" = "$EXPECTED_KEYID" ] || { echo "FAIL: user.signingkey expected $EXPECTED_KEYID"; exit 1; }
+          [ "$UN" = "CI Bot" ] || { echo "FAIL: user.name"; exit 1; }
+          [ "$UE" = "test@example.com" ] || { echo "FAIL: user.email"; exit 1; }
+          [ "$CS" = "true" ] || { echo "FAIL: commit.gpgsign"; exit 1; }
+          [ "$TS" = "true" ] || { echo "FAIL: tag.gpgsign"; exit 1; }
+          [ "$PS" = "true" ] || { echo "FAIL: push.gpgsign"; exit 1; }
+          echo "PASS"
+      - name: Assert a signed commit can be created
+        run: |
+          # signingkey is the encryption subkey id; force gpg to pick the signing-capable primary key
+          git -c user.signingkey="$EXPECTED_FPR" commit --allow-empty -m "signed test commit"
+          git cat-file -p HEAD
+          if ! git cat-file -p HEAD | grep -q "^gpgsig "; then
+            echo "FAIL: commit is not signed"
+            exit 1
+          fi
+          echo "PASS"

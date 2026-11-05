@@ -1,0 +1,74 @@
+name: Test basic import (no passphrase)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure gpg is installed
+        run: |
+          if ! command -v gpg >/dev/null 2>&1; then
+            SUDO=""; command -v sudo >/dev/null 2>&1 && SUDO="sudo"
+            $SUDO apt-get update && $SUDO apt-get install -y gnupg
+          fi
+          gpg --version
+      - name: Generate a throwaway GPG key (unprotected)
+        run: |
+          set -e
+          export GNUPGHOME="$(mktemp -d)"
+          chmod 700 "$GNUPGHOME"
+          cat > "$GNUPGHOME/params" <<EOF
+          %no-protection
+          Key-Type: RSA
+          Key-Length: 2048
+          Key-Usage: sign
+          Subkey-Type: RSA
+          Subkey-Length: 2048
+          Subkey-Usage: encrypt
+          Name-Real: Test User
+          Name-Email: test@example.com
+          Expire-Date: 0
+          %commit
+          EOF
+          gpg --batch --gen-key "$GNUPGHOME/params"
+          FPR=$(gpg --with-colons --list-secret-keys | awk -F: '/^fpr:/ {print $10; exit}')
+          SUBKEYID=$(gpg --with-colons --list-secret-keys | awk -F: '/^ssb:/ {print $5; exit}')
+          echo "EXPECTED_FPR=$FPR" >> "$GITHUB_ENV"
+          echo "EXPECTED_KEYID=$SUBKEYID" >> "$GITHUB_ENV"
+          {
+            echo "GPG_PRIVATE_KEY<<EOF_GPG_KEY"
+            gpg --batch --armor --export-secret-keys "$FPR"
+            echo "EOF_GPG_KEY"
+          } >> "$GITHUB_ENV"
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
+      - id: action
+        uses: .
+      - name: Assert outputs
+        env:
+          FPR: ${{ steps.action.outputs.fingerprint }}
+          KEYID: ${{ steps.action.outputs.keyid }}
+          EMAIL: ${{ steps.action.outputs.email }}
+        run: |
+          echo "fingerprint: $FPR (expected $EXPECTED_FPR)"
+          echo "keyid: $KEYID (expected $EXPECTED_KEYID)"
+          echo "email: $EMAIL"
+          if [ "$FPR" != "$EXPECTED_FPR" ]; then echo "FAIL: fingerprint mismatch"; exit 1; fi
+          if [ "$KEYID" != "$EXPECTED_KEYID" ]; then echo "FAIL: keyid mismatch"; exit 1; fi
+          if [ "$EMAIL" != "test@example.com" ]; then echo "FAIL: email mismatch"; exit 1; fi
+          echo "PASS"
+      - name: Assert key imported into keyring
+        run: |
+          gpg --batch --with-colons --list-secret-keys
+          if ! gpg --batch --with-colons --list-secret-keys | grep -q "$EXPECTED_FPR"; then
+            echo "FAIL: imported secret key not found in keyring"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert git signing config was not touched
+        run: |
+          VAL=$(git config --local --get user.signingkey || true)
+          echo "user.signingkey: '$VAL'"
+          if [ -n "$VAL" ]; then echo "FAIL: user.signingkey should not be set"; exit 1; fi
+          echo "PASS"
