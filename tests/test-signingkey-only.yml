@@ -1,0 +1,42 @@
+name: Test signing key only with custom committer name
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Load test key into env and clear signing config
+        run: |
+          git config --unset commit.gpgsign || true
+          git config --unset tag.gpgsign || true
+          git config --unset push.gpgsign || true
+          {
+            echo "GPG_PRIVATE_KEY<<EOF_GPG_KEY"
+            cat "$GITHUB_WORKSPACE/.github/test-key.pgp"
+            echo ""
+            echo "EOF_GPG_KEY"
+            echo "PASSPHRASE=$(cat "$GITHUB_WORKSPACE/.github/test-key.pass")"
+          } >> "$GITHUB_ENV"
+      - id: action
+        uses: .
+        with:
+          git_user_signingkey: 'true'
+          git_committer_name: 'Custom Name'
+          git_committer_email: 'joe@foo.bar'
+      - name: Assert git config
+        run: |
+          check() {
+            actual="$(git config --local --get "$1" || true)"
+            echo "$1 = '$actual'"
+            if [ "$actual" != "$2" ]; then
+              echo "FAIL: expected $1 = '$2'"; exit 1
+            fi
+          }
+          check user.signingkey D523BD50DD70B0BA
+          check user.name "Custom Name"
+          check user.email joe@foo.bar
+          check commit.gpgsign ""
+          check tag.gpgsign ""
+          check push.gpgsign ""
+          echo "PASS"
