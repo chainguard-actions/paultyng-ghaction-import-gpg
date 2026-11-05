@@ -1,6 +1,16 @@
 {
   "owner": "paultyng",
   "repo": "ghaction-import-gpg",
-  "version": "",
-  "url": "https://github.com/paultyng/ghaction-import-gpg"
+  "version": "v2.0.1",
+  "commit_sha": "aab1b2999b082992384168cc4097ccbb05b03272",
+  "url": "https://github.com/paultyng/ghaction-import-gpg",
+  "policy_sha": "d636be7e43ef829af6e853da6b3c7566db9f72fe",
+  "test_policy_sha": "843adf9e4b8f85d0c08b27b9d0b09dd094b54702",
+  "test_agent_version": "2",
+  "harden_agent_version": "2",
+  "node_artifact": {
+    "gcs_uri": "gs://prod-actions-node-artifacts/node-artifacts/paultyng/ghaction-import-gpg/v2.0.1/sha256-918c7db8812240167ebbef465bd905a04064ef22a8c374f6c45788444119bafc.tar.gz",
+    "sha256": "918c7db8812240167ebbef465bd905a04064ef22a8c374f6c45788444119bafc",
+    "size_bytes": 2279982
+  }
 }

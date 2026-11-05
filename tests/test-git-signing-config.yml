@@ -1,0 +1,55 @@
+name: Test git signing configuration
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure gpg is available
+        run: |
+          if ! command -v gpg >/dev/null 2>&1 || ! command -v gpg-connect-agent >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y gnupg || (apt-get update && apt-get install -y gnupg)
+          fi
+          gpg --version
+      - name: Load test key into env
+        run: |
+          {
+            echo "GPG_PRIVATE_KEY<<EOF_GPG_KEY"
+            cat .github/test-key.pgp
+            echo ""
+            echo "EOF_GPG_KEY"
+            echo "PASSPHRASE=$(cat .github/test-key.pass)"
+          } >> "$GITHUB_ENV"
+      - id: action
+        uses: .
+        with:
+          git_user_signingkey: 'true'
+          git_commit_gpgsign: 'true'
+          git_tag_gpgsign: 'true'
+          git_push_gpgsign: 'true'
+          git_committer_name: 'Custom Name'
+      - name: Assert git config
+        run: |
+          check() {
+            actual="$(git config --get "$1" || true)"
+            echo "$1 = $actual"
+            if [ "$actual" != "$2" ]; then
+              echo "FAIL: expected $1 = '$2'"; exit 1
+            fi
+          }
+          check user.signingkey D523BD50DD70B0BA
+          check user.name "Custom Name"
+          check user.email joe@foo.bar
+          check commit.gpgsign true
+          check tag.gpgsign true
+          check push.gpgsign true
+          echo "PASS"
+      - name: Assert signed commit works
+        run: |
+          git commit --allow-empty -m "signed test commit"
+          git log --show-signature -1
+          if ! git verify-commit HEAD; then
+            echo "FAIL: commit not signed/verifiable"; exit 1
+          fi
+          echo "PASS"

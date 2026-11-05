@@ -1,0 +1,51 @@
+name: Test basic import with passphrase
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure gpg is available
+        run: |
+          if ! command -v gpg >/dev/null 2>&1 || ! command -v gpg-connect-agent >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y gnupg || (apt-get update && apt-get install -y gnupg)
+          fi
+          gpg --version
+      - name: Load test key into env
+        run: |
+          {
+            echo "GPG_PRIVATE_KEY<<EOF_GPG_KEY"
+            cat .github/test-key.pgp
+            echo ""
+            echo "EOF_GPG_KEY"
+            echo "PASSPHRASE=$(cat .github/test-key.pass)"
+          } >> "$GITHUB_ENV"
+      - id: action
+        uses: .
+      - name: Assert outputs
+        env:
+          FINGERPRINT: ${{ steps.action.outputs.fingerprint }}
+          KEYID: ${{ steps.action.outputs.keyid }}
+          EMAIL: ${{ steps.action.outputs.email }}
+        run: |
+          echo "fingerprint: $FINGERPRINT"
+          echo "keyid: $KEYID"
+          echo "email: $EMAIL"
+          if [ "$FINGERPRINT" != "27571A53B86AF0C799B38BA77D851EB72D73BDA0" ]; then
+            echo "FAIL: unexpected fingerprint"; exit 1
+          fi
+          if [ "$KEYID" != "D523BD50DD70B0BA" ]; then
+            echo "FAIL: unexpected keyid"; exit 1
+          fi
+          if [ "$EMAIL" != "joe@foo.bar" ]; then
+            echo "FAIL: unexpected email"; exit 1
+          fi
+          echo "PASS"
+      - name: Assert key is imported in keyring
+        run: |
+          gpg --batch --list-secret-keys --with-colons
+          if ! gpg --batch --list-secret-keys --with-colons | grep -q "27571A53B86AF0C799B38BA77D851EB72D73BDA0"; then
+            echo "FAIL: secret key not found in keyring"; exit 1
+          fi
+          echo "PASS"
