@@ -8,6 +8,8 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 | Version | Tag | Upstream commit | Hardening report |
 |---------|-----|-----------------|------------------|
+| v2.0.0 | [`v2.0.0`](https://github.com/chainguard-actions/paultyng-ghaction-import-gpg/tree/v2.0.0) | [`1248ce6`](https://github.com/paultyng/ghaction-import-gpg/commit/1248ce6411ddf257864bfb2388c5eb3cc2c54e4c) | [`HARDENING.md`](https://github.com/chainguard-actions/paultyng-ghaction-import-gpg/blob/v2.0.0/HARDENING.md) |
+| v2.0.1 | [`v2.0.1`](https://github.com/chainguard-actions/paultyng-ghaction-import-gpg/tree/v2.0.1) | [`aab1b29`](https://github.com/paultyng/ghaction-import-gpg/commit/aab1b2999b082992384168cc4097ccbb05b03272) | [`HARDENING.md`](https://github.com/chainguard-actions/paultyng-ghaction-import-gpg/blob/v2.0.1/HARDENING.md) |
 | v2.1.0 | [`v2.1.0`](https://github.com/chainguard-actions/paultyng-ghaction-import-gpg/tree/v2.1.0) | [`53deb67`](https://github.com/paultyng/ghaction-import-gpg/commit/53deb67fe3b05af114ad9488a4da7b782455d588) | [`HARDENING.md`](https://github.com/chainguard-actions/paultyng-ghaction-import-gpg/blob/v2.1.0/HARDENING.md) |
 
 ## Privacy
